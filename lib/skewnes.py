@@ -140,7 +140,15 @@ def correct(filename):
         extTop = tuple(c[c[:, :, 1].argmin()][0])
         extBot = tuple(c[c[:, :, 1].argmax()][0])
 
-        #print(extLeft, extRight, extTop, extBot)
+        print(extLeft, extRight, extTop, extBot)
+        
+#         if 50 < extLeft[0] < 60 and 240 < extRight[0] < 250:
+#             extLeft = (58, 110)
+#             extRight = (244, 130)
+#             extTop = (162, 67)
+#             extBot = (133, 175)
+#         else:
+#             cv2.imwrite('ai/' + filename, image)
 
         # Find the topmost edge points of skewed image 
         pts1 = np.float32([extLeft, extBot, extTop, extRight])
@@ -175,12 +183,12 @@ def correct_files(brick):
         if file == 'database.json':
             next
         else:
-            print(file)
+            correct(file)
 
-correct('test.jpg')
+#correct('test.jpg')
 
 # handle_folders(3070)
-# correct_files(3070)
+# correct_files(test)
 
 # ############
 # # Most of the inspiration and a bulk of the code is from: https://www.pyimagesearch.com/
