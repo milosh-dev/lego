@@ -5,14 +5,61 @@ import tkinter as tk
 from tkinter import *
 from tkinter.ttk import Progressbar
 
+########################
+# The main functionality is in lib folder
+########################
 from lib import scraper
 from lib import skewnes
+from lib import detect
 
-import time
+import time # usef for delay/sleep
 import json # used for creating json database
-import os # usef for creating list of scraped images
+import os   # usef for creating list of scraped images
+import cv2  # for video capture
+from PIL import Image
+from PIL import ImageTk
 
-# We use multiple windows, hence we are using classes
+# Define log entry
+def write_log_entry(time, folder, name, text1, text2):
+    import csv
+    # Get current directory
+    directory = os.getcwd()
+    log=[]
+    log.append(time)
+    log.append(folder)
+    log.append(name)
+    log.append(text1)
+    log.append(text2)
+    csv_file=directory+'/database/log.csv'
+    fh=open(csv_file,'a',newline='')
+    writer=csv.writer(fh)
+    writer.writerow(log)
+    fh.close()
+
+# Define timestamp
+def timestamp():
+    from datetime import datetime
+    return datetime.today().strftime('%Y-%m-%d %H:%M:%S')
+
+# prepare log entries from downloads
+def store_in_log(dicto, brick):
+    for key in dicto:
+        write_log_entry ( dicto[key]['saved'], brick , key, dicto[key]['name'],'downloaded')
+
+# prepare log entries from correction
+def find_lego_title(file_name,folder):
+    import re
+    directory = os.getcwd()
+    csv_file=directory+'/database/log.csv'
+    fh=open(csv_file)
+    for line in fh:
+        llst=line.split(',')
+        a=re.findall('(.*)[\.]',file_name)[0]
+        if llst[2] == a:
+            return llst[3]
+
+
+# in App We are using multiple windows, hence we are defining classes
 # The solution is based on the following source:
 # https://stackoverflow.com/questions/16115378/tkinter-example-code-for-multiple-windows-why-wont-buttons-load-correctly
 class StartPage(tk.Frame):
@@ -34,7 +81,7 @@ class StartPage(tk.Frame):
         self.btn_scrape.pack(side=LEFT, padx=20, pady=20)
         self.btn_correct = tk.Button(self.buttons, text = '2. Process Lego Images', command = self.correctingPage)
         self.btn_correct.pack(side=LEFT, padx=20, pady=20)
-        self.btn_find = tk.Button(self.buttons, text = '3. Use for PhotoMatching', command = self.scrapingPage)
+        self.btn_find = tk.Button(self.buttons, text = '3. Use database for brick matching', command = self.detectPage)
         self.btn_find.pack(side=LEFT, padx=20, pady=20)
         self.buttons.pack()
 
@@ -56,6 +103,13 @@ class StartPage(tk.Frame):
         self.newWindow.title("Correct Images")
         self.app = CorrectPage(self.newWindow)
 
+    def detectPage(self):
+        self.master.withdraw()
+        self.newWindow = tk.Toplevel(self.master)
+        self.newWindow.geometry("800x800")
+        self.newWindow.title("Detect brick")
+        self.app = DetectPage(self.newWindow)
+
 
 # Scraping page
 class StartScrapingPage(tk.Frame):
@@ -63,8 +117,8 @@ class StartScrapingPage(tk.Frame):
         self.master = master
         self.brick = StringVar(self.master)
         self.frame = tk.Frame(self.master)
-        self.label = tk.Label(self.frame, text="Start scraping brick data").pack(side = TOP, padx=20, pady=20)
-        self.label = tk.Label(self.frame, text="Enter the code of the brick (e.g 3068)").pack(side = LEFT, padx=20, pady=20)
+        self.label = tk.Label(self.frame, text="Start scraping brick data (this might take 10s of minutes)").pack(side = TOP, padx=20, pady=20)
+        self.label = tk.Label(self.frame, text="Enter the code of the brick (e.g 3070)").pack(side = LEFT, padx=20, pady=20)
         self.entry = tk.Entry(self.frame, textvariable=self.brick).pack(side = LEFT, padx=20, pady=20)
         self.frame.pack()
 
@@ -92,44 +146,45 @@ class StartScrapingPage(tk.Frame):
         self.newWindow.title("OpenCV database creating app")
         self.app = StartPage(self.newWindow)
 
-    def test1(self):
-        self.button.config(state = DISABLED)
-        self.btn_home.config(state = DISABLED)
-        self.update()
-    
-    def test(self, idx, binst):
-#        binst.master.prolabel = tk.Label(self.frame_b, text="Downloading data...").pack(side = TOP, padx=20, pady=20)
-#         binst.master.progress = Progressbar(self.frame_b, value = self.pr, orient=HORIZONTAL, length=400, mode='determinate')
-        binst.destroy()
-        self.run()
-#         self.scrape()
-
-    def run(self):
-        self.prolabel.pack(side = TOP, padx=20, pady=20)
-        self.progress.pack(padx=20, pady=10)
-        self.button.config(state = DISABLED)
-        self.btn_home.config(state = DISABLED)
-        self.progress['maximum'] = 100
-        for i in range(0, 100, 5):
-            time.sleep(0.05)
-            self.progress["value"] = i
-            self.progress.update()
-            self.progress["value"] = 0
-        self.progress["value"] = 100
-
-    def update(self):
-        self.prolabel.pack(side = TOP, padx=20, pady=20)
-        self.progress.pack(padx=20, pady=10)
-        if self.progress['value'] < 100:
-            self.progress['value'] += 0
-            self.master.after(100, self.update)
-        else:
-            self.progress.destroy()
-            self.prolabel['text'] = "Done: " + self.brick.get()
-            
+#     def test1(self):
+#         self.button.config(state = DISABLED)
+#         self.btn_home.config(state = DISABLED)
+#         self.update()
+#     
+#     def test(self, idx, binst):
+# #        binst.master.prolabel = tk.Label(self.frame_b, text="Downloading data...").pack(side = TOP, padx=20, pady=20)
+# #         binst.master.progress = Progressbar(self.frame_b, value = self.pr, orient=HORIZONTAL, length=400, mode='determinate')
+#         binst.destroy()
+#         self.run()
+# #         self.scrape()
+# 
+#     def run(self):
+#         self.prolabel.pack(side = TOP, padx=20, pady=20)
+#         self.progress.pack(padx=20, pady=10)
+#         self.button.config(state = DISABLED)
+#         self.btn_home.config(state = DISABLED)
+#         self.progress['maximum'] = 100
+#         for i in range(0, 100, 5):
+#             time.sleep(0.05)
+#             self.progress["value"] = i
+#             self.progress.update()
+#             self.progress["value"] = 0
+#         self.progress["value"] = 100
+# 
+#     def update(self):
+#         self.prolabel.pack(side = TOP, padx=20, pady=20)
+#         self.progress.pack(padx=20, pady=10)
+#         if self.progress['value'] < 100:
+#             self.progress['value'] += 0
+#             self.master.after(100, self.update)
+#         else:
+#             self.progress.destroy()
+#             self.prolabel['text'] = "Done: " + self.brick.get()
+#             
     # This function is scraping the page
     def scrape(self):
         brick = str(self.brick.get())
+        
         if len(brick) == 0:
             return
 
@@ -147,6 +202,7 @@ class StartScrapingPage(tk.Frame):
         i = 1
 
         lego = scraper.handle_folders(brick)
+        
         database = 'database/' + str(brick) + '/database.json'
 
         # Calculate progress step
@@ -165,9 +221,14 @@ class StartScrapingPage(tk.Frame):
         
         # create a json file for database
         lego_json = json.dumps(lego)
+ 
         f = open(database, 'w')
         f.write(lego_json)
         f.close()
+
+        #create log_entries
+        store_in_log(lego, brick) 
+
 
 #         self.progress.destroy()
         self.prolabel['text'] = "Done! Downloaded information for " + str(len(lego)) + " bricks."        
@@ -182,7 +243,7 @@ class StartScrapingPage(tk.Frame):
         self.newWindow.title("Let's start")
         self.app = StartPage(self.newWindow)
 
-# Correction page
+# Brick skewnes correction page
 class CorrectPage(tk.Frame):
     def __init__(self, master):
         self.master = master
@@ -237,9 +298,19 @@ class CorrectPage(tk.Frame):
                 next
             else:
                 skewnes.correct(brick + '/' + file)
+
+                ####### Kontis additions !!!!!!!!!!!!!!!!!  Start   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+                # find official title for lego item
+                lego_title=find_lego_title(file,brick)
+                #create log_entries
+                write_log_entry(timestamp(), brick, file, lego_title, 'corrected')
+                ####### Kontis additions !!!!!!!!!!!!!!!!!  Stop   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
             # update progress bar
             self.progress['value'] += step
             self.progress.update()
+
+            
             
 #         for i in range(0, 100, 5):
 #             time.sleep(0.05)
@@ -260,13 +331,103 @@ class CorrectPage(tk.Frame):
         self.newWindow.geometry("800x400")
         self.newWindow.title("OpenCV database creating app")
         self.app = StartPage(self.newWindow)
+
+
+# Brick detecting page
+class DetectPage(tk.Frame):
+    def __init__(self, master):
+        self.master = master
+        self.frame = tk.Frame(self.master)
+        # Create label for description
+        self.label = tk.Label(self.master, text='Show the brick and press "Detect". (The real-time capturing is too slow..)')
+        self.label.pack(side = TOP, padx=20, pady=20)
         
+        # Create video canvas
+        # source/code partially based on: https://solarianprogrammer.com/2018/04/21/python-opencv-show-video-tkinter-window/
+        self.video = cv2.VideoCapture(0)
+        if not self.video.isOpened():
+            raise ValueError("Unable to open video source")
+ 
+        # Get video source width and height
+        self.width = self.video.get(cv2.CAP_PROP_FRAME_WIDTH)
+        self.height = self.video.get(cv2.CAP_PROP_FRAME_HEIGHT)
+        
+        # Create a canvas for video
+        self.canvas = tk.Canvas(self.master, width = self.width, height = self.height)
+        self.canvas.pack(side = TOP, padx=20, pady=20)
+        self.frame.pack()
+#         self.master.pack()
+
+
+        # Find result
+        self.lego_label = tk.Label(self.master, text = "No match for a brick")
+        self.lego_label.pack(side = TOP, padx=20, pady=20)
+    
+        # Buttons        
+        self.buttons = tk.Frame(self.master)
+        self.btn_snapshot=tk.Button(self.buttons, text="Detect", width=30, command=self.detect)
+        self.btn_snapshot.pack(anchor=tk.CENTER, expand=True)
+        self.btn_home = tk.Button(self.buttons, text = 'Back to main screen', width=20, command = self.homePage)
+        self.btn_home.pack(side = RIGHT, padx=20, pady=20)
+        self.buttons.pack()    
+
+    # we need to update for real-time capture        
+        self.delay = 15
+        self.update()
+
+    # source/code partially based on: https://solarianprogrammer.com/2018/04/21/python-opencv-show-video-tkinter-window/
+    def update(self):
+        # get a frame from video
+        ret, frame = self.get_frame()
+        
+        if ret:
+            self.photo = ImageTk.PhotoImage(image=Image.fromarray(frame))
+            self.canvas.create_image(0,0, image = self.photo, anchor = tk.NW)
+        
+        self.master.after(self.delay, self.update)
+
+    # read video frame.
+    # source/code partially based on: https://solarianprogrammer.com/2018/04/21/python-opencv-show-video-tkinter-window/    
+    def get_frame(self):
+        if self.video.isOpened():
+            ret, frame = self.video.read()
+            if ret:
+                 # Return a boolean success flag and the current frame converted to BGR
+                return (ret, cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+            else:
+                return (ret, None)
+        else:
+            return (ret, None)
+
+    def detect(self):
+        # get a frame from video
+        ret, frame = self.video.read()
+        lego = detect.detect(frame)
+        
+        if len(lego) > 0:     
+            print(lego['name'])    
+            self.lego_label['text'] = lego['name'] + ', price: ' + str(lego['data']['price']) + ' EUR'
+#             self.lego_label.pack(side = CENTER, padx=20, pady=20)
+        else:
+            self.lego_label['text'] = "Did not found"           
+
+    # Return to the main screen
+    def homePage(self):
+        self.master.withdraw()
+        self.newWindow = tk.Toplevel(self.master)
+        self.newWindow.geometry("800x400")
+        self.newWindow.title("OpenCV database creating app")
+        self.app = StartPage(self.newWindow)
+
+
 # Start with the main page
 def main():
     window = Tk()
     app = StartPage(window)
+#    app = DetectPage(window)
     window.title("OpenCV database creating app")
     window.geometry("800x400")
+#    window.geometry("800x800")
     window.mainloop()
 
 # Start with main window
